@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Ikemoto Surprise Day2</title>
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+</head>
+<body>
+  <!-- ルート直下の targets.mind を直指定。キャッシュ回避に ?v=1 を付けてもOK -->
+  <a-scene
+    mindar-image="imageTargetSrc: targets.mind?v=50;"
+    vr-mode-ui="enabled:false"
+    device-orientation-permission-ui="enabled:false">
+
+    <a-assets>
+      <!-- 重ねるPNG（直下） -->
+      <img id="overlay" src="real-itinearly.png?v=1">
+    </a-assets>
+
+    <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
+
+    <!-- ターゲット0上にPNGをジャストサイズで表示（幅=1, 高さ=比率） -->
+    <a-entity mindar-image-target="targetIndex: 0">
+      <a-plane id="pane" src="#overlay" position="0 0 0" rotation="0 0 0"></a-plane>
+    </a-entity>
+  </a-scene>
+
+  <script>
+    // 画像比率で平面サイズを合わせる（0サイズ防止）
+    const img = document.getElementById('overlay');
+    const pane= document.getElementById('pane');
+    function fit(){
+      if(!img.naturalWidth||!img.naturalHeight) return;
+      const r = img.naturalHeight / img.naturalWidth;
+      pane.setAttribute('width', 1);
+      pane.setAttribute('height', r);
+      console.log('[overlay] size set', {w:1, h:r});
+    }
+    if (img.complete && img.naturalWidth) fit(); else img.addEventListener('load', fit);
+
+    // 検出ログ
+    const anchor = document.querySelector('[mindar-image-target]');
+    anchor.addEventListener('targetFound', ()=>console.log('found 0'));
+    anchor.addEventListener('targetLost',  ()=>console.log('lost 0'));
+  </script>
+</body>
+</html>
