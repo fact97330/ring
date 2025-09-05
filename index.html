@@ -3,47 +3,135 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Ikemoto Surprise Day2</title>
+  <title>Ikemoto Surprise Day1</title>
+  <!-- A-Frame & MindAR -->
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  <style>
+    html,body{margin:0;padding:0;background:#000;overflow:hidden;}
+    .toast{
+      position:fixed;left:50%;bottom:16px;transform:translateX(-50%);
+      background:rgba(0,0,0,.75);color:#fff;padding:8px 12px;border-radius:10px;font-size:13px;z-index:3;display:none
+    }
+  </style>
 </head>
 <body>
-  <!-- ルート直下の targets.mind を直指定。キャッシュ回避に ?v=1 を付けてもOK -->
+  <div id="toast" class="toast"></div>
+
+  <!-- ルート直下の targets.mind。キャッシュ回避したければ ?v=1 等を付けてOK -->
   <a-scene
-    mindar-image="imageTargetSrc: targets.mind?v=50;"
+    mindar-image="imageTargetSrc: targets.mind"
     vr-mode-ui="enabled:false"
-    device-orientation-permission-ui="enabled:false">
+    device-orientation-permission-ui="enabled:false"
+    renderer="colorManagement: true; physicallyCorrectLights: true; antialias: true; shadowMap.enabled: true">
 
     <a-assets>
-      <!-- 重ねるPNG（直下） -->
-      <img id="overlay" src="real-itinearly.png?v=1">
+      <!-- 2Dオーバーレイ（直下） -->
+      <img id="overlay" src="real-itinerary.png">
     </a-assets>
 
     <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
 
-    <!-- ターゲット0上にPNGをジャストサイズで表示（幅=1, 高さ=比率） -->
-    <a-entity mindar-image-target="targetIndex: 0">
-      <a-plane id="pane" src="#overlay" position="0 0 0" rotation="0 0 0"></a-plane>
+    <!-- ターゲット0上に2D & 3Dを重ねる -->
+    <a-entity id="anchor" mindar-image-target="targetIndex: 0">
+      <!-- 受け面（紙）＝影を受ける -->
+      <a-plane id="pane" src="#overlay"
+               position="0 0 0" rotation="0 0 0"
+               material="transparent: true; roughness: 1; metalness: 0"
+               shadow="receive: true">
+      </a-plane>
+      <!-- 3DモデルはJSで動的に追加（GLB優先→OBJフォールバック） -->
     </a-entity>
+
+    <!-- ライト：ambient + 影付きdirectional（少し斜め上） -->
+    <a-entity light="type: ambient; intensity: 0.5; color: #ffffff"></a-entity>
+    <a-entity id="dirLight"
+              light="type: directional; intensity: 1.0; castShadow: true; color: #ffffff"
+              position="0.8 1.2 0.6"></a-entity>
   </a-scene>
 
   <script>
-    // 画像比率で平面サイズを合わせる（0サイズ防止）
-    const img = document.getElementById('overlay');
-    const pane= document.getElementById('pane');
+    // 受け面（pane）を画像の縦横比にフィット（幅=1, 高さ=比率）
+    const img  = document.getElementById('overlay');
+    const pane = document.getElementById('pane');
     function fit(){
       if(!img.naturalWidth||!img.naturalHeight) return;
       const r = img.naturalHeight / img.naturalWidth;
       pane.setAttribute('width', 1);
       pane.setAttribute('height', r);
-      console.log('[overlay] size set', {w:1, h:r});
+      window.__paneHalfHeight = r/2; // 3Dをちょい浮かせる用
     }
     if (img.complete && img.naturalWidth) fit(); else img.addEventListener('load', fit);
 
+    // 影の品質を少し良く（PCF Soft）
+    (function(){
+      const sceneEl = document.querySelector('a-scene');
+      sceneEl.addEventListener('loaded', ()=>{
+        try{
+          sceneEl.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+          const d = 2.0;
+          const light = document.getElementById('dirLight').getObject3D('light');
+          if (light && light.shadow && light.shadow.camera) {
+            Object.assign(light.shadow.camera, { left:-d, right:d, top:d, bottom:-d, near:0.1, far:6 });
+          }
+        }catch(e){}
+      });
+    })();
+
+    // 画面下トースト
+    function toast(msg){
+      const t = document.getElementById('toast');
+      t.textContent = msg; t.style.display='block';
+      setTimeout(()=>t.style.display='none', 4200);
+    }
+
+    // GLBがあればGLB、無ければOBJ(+MTL)を読み込む。どちらも無ければトースト。
+    (async function insertModel(){
+      const has = async (p)=>{ try{ const r=await fetch(p,{method:'HEAD'}); return r.ok; }catch(e){ return false; } };
+      const glb = 'ring.glb';
+      const obj = 'ring.obj';
+      const mtl = 'ring.mtl';
+      const anchor = document.getElementById('anchor');
+
+      const common = (el)=>{
+        // 紙とZファイトしないように少し浮かせる・姿勢/サイズは適宜調整
+        el.setAttribute('position', `0 ${ (window.__paneHalfHeight||0) * 0 + 0.02 } 0`);
+        el.setAttribute('rotation', '0 45 0');
+        el.setAttribute('scale', '0.08 0.08 0.08');
+        el.setAttribute('shadow', 'cast: true; receive: false');
+        anchor.appendChild(el);
+      };
+
+      if (await has(glb)) {
+        const e = document.createElement('a-gltf-model');
+        e.setAttribute('src', glb);
+        // GLBはモデル側のPBRを尊重（イエローゴールドはモデルのマテリアル側推奨）
+        common(e);
+        toast('3D: GLB を読み込みました');
+        return;
+      }
+
+      if (await has(obj)) {
+        const e = document.createElement('a-entity');
+        if (await has(mtl)) {
+          e.setAttribute('obj-model', `obj: ${obj}; mtl: ${mtl}`);
+        } else {
+          e.setAttribute('obj-model', `obj: ${obj}`);
+        }
+        // OBJは見た目を上書きしやすい：イエローゴールド風（高メタル・低ラフ）
+        e.setAttribute('material', 'shader: standard; color: #D4AF37; metalness: 1.0; roughness: 0.25');
+        common(e);
+        toast('3D: OBJ を読み込みました');
+        return;
+      }
+
+      toast('3Dモデルが見つかりません（ring.glb か ring.obj をリポジトリ直下に置いてください）');
+    })();
+
     // 検出ログ
-    const anchor = document.querySelector('[mindar-image-target]');
-    anchor.addEventListener('targetFound', ()=>console.log('found 0'));
-    anchor.addEventListener('targetLost',  ()=>console.log('lost 0'));
+    const anchorEl = document.querySelector('[mindar-image-target]');
+    anchorEl.addEventListener('targetFound', ()=>console.log('found 0'));
+    anchorEl.addEventListener('targetLost',  ()=>console.log('lost 0'));
   </script>
 </body>
 </html>
