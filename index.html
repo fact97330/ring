@@ -22,30 +22,46 @@
 
     <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
 
-    <!-- ターゲット0上にPNGをジャストサイズで表示（幅=1, 高さ=比率）＋ 3Dを1行追加 -->
+    <!-- ターゲット0上にPNG＋3D -->
     <a-entity mindar-image-target="targetIndex: 0">
+      <!-- 紙の平面（★サイズ=20倍、影響を受けないよう少し上に指輪を置く） -->
       <a-plane id="pane" src="#overlay" position="0 0 0" rotation="0 0 0"></a-plane>
 
-      <!-- ▼ 3Dモデル（GLB）。紙から少し浮かせ、倍率は scale で調整 -->
-      <a-gltf-model id="ring" src="ring.glb" position="0 0.2 0" rotation="0 45 0" scale="0.8 0.8 0.8"></a-gltf-model>
+      <!-- 指輪（★スケール=20倍、★浮かせ量も20倍相当に） -->
+      <a-gltf-model id="ring"
+        src="ring.glb"
+        position="0 0.40 0"       <!-- 0.02 × 20 = 0.40 にアップ（ウキを強め） -->
+        rotation="0 45 0"
+        scale="4.4 4.4 4.4">      <!-- 0.22 × 20 = 4.4 にアップ -->
+      </a-gltf-model>
     </a-entity>
   </a-scene>
 
   <script>
-    // 画像比率で平面サイズを合わせる（幅=1, 高さ=比率）
-    const img = document.getElementById('overlay');
-    const pane= document.getElementById('pane');
+    // ====== 20倍スケール設定 ======
+    const SCALE = 20;          // 紙＆指輪の倍率
+    const BASE_LIFT = 0.02;    // 元の浮かせ量
+    const BASE_RING = 0.22;    // 元の指輪スケール
+
+    // 画像比率で平面サイズを幅=1→20、高さ=r→r*20 に
+    const img  = document.getElementById('overlay');
+    const pane = document.getElementById('pane');
     function fit(){
       if(!img.naturalWidth||!img.naturalHeight) return;
       const r = img.naturalHeight / img.naturalWidth;
-      pane.setAttribute('width', 1);
-      pane.setAttribute('height', r);
-      console.log('[overlay] size set', {w:1, h:r});
+      pane.setAttribute('width', 1 * SCALE);   // ★ 20倍に
+      pane.setAttribute('height', r * SCALE);  // ★ 20倍に
+      console.log('[overlay] size set', {w:1*SCALE, h:r*SCALE});
     }
     if (img.complete && img.naturalWidth) fit(); else img.addEventListener('load', fit);
 
+    // 指輪の最終スケール／浮かせ（明示再設定：上の属性値と一致させています）
+    const ring = document.getElementById('ring');
+    ring.setAttribute('scale', `${BASE_RING*SCALE} ${BASE_RING*SCALE} ${BASE_RING*SCALE}`);
+    ring.setAttribute('position', `0 ${BASE_LIFT*SCALE*1} 0`);
+
     // ログ（任意）
-    document.getElementById('ring')?.addEventListener('model-loaded', () => console.log('ring loaded'));
+    ring?.addEventListener('model-loaded', () => console.log('ring loaded'));
     const anchor = document.querySelector('[mindar-image-target]');
     anchor.addEventListener('targetFound', ()=>console.log('found 0'));
     anchor.addEventListener('targetLost',  ()=>console.log('lost 0'));
