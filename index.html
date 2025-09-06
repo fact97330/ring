@@ -4,61 +4,57 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Ikemoto Surprise Day1</title>
-  <!-- A-Frame & MindAR -->
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 </head>
 <body>
-  <!-- ルート直下の targets.mind を直指定。キャッシュ回避は ?v=50 を継承 -->
   <a-scene
     mindar-image="imageTargetSrc: targets.mind?v=50;"
     vr-mode-ui="enabled:false"
     device-orientation-permission-ui="enabled:false">
 
     <a-assets>
-      <!-- 重ねるPNG（直下） -->
       <img id="overlay" src="real-itinerary.png?v=1">
     </a-assets>
 
     <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
 
-    <!-- ターゲット0上にPNG＋3D -->
+    <!-- 紙＝10倍（前回20→半分）、指輪＝前回と同じ（scale 4.4 / lift 0.40） -->
     <a-entity mindar-image-target="targetIndex: 0">
-      <!-- 紙の平面（★サイズ=20倍、影響を受けないよう少し上に指輪を置く） -->
       <a-plane id="pane" src="#overlay" position="0 0 0" rotation="0 0 0"></a-plane>
 
-      <!-- 指輪（★スケール=20倍、★浮かせ量も20倍相当に） -->
+      <!-- 指輪：前回と同サイズ -->
       <a-gltf-model id="ring"
         src="ring.glb"
-        position="0 0.40 0"       <!-- 0.02 × 20 = 0.40 にアップ（ウキを強め） -->
+        position="0 0.40 0"
         rotation="0 45 0"
-        scale="4.4 4.4 4.4">      <!-- 0.22 × 20 = 4.4 にアップ -->
+        scale="4.4 4.4 4.4">
       </a-gltf-model>
     </a-entity>
   </a-scene>
 
   <script>
-    // ====== 20倍スケール設定 ======
-    const SCALE = 20;          // 紙＆指輪の倍率
-    const BASE_LIFT = 0.02;    // 元の浮かせ量
-    const BASE_RING = 0.22;    // 元の指輪スケール
+    // ====== 紙は前回の半分（10倍） ======
+    const PLANE_SCALE = 10;     // 紙の倍率（前回20 → 10）
+    const RING_SCALE   = 4.4;   // 指輪のスケール（前回と同じ）
+    const RING_LIFT    = 0.40;  // 指輪の浮かせ量（前回と同じ）
 
-    // 画像比率で平面サイズを幅=1→20、高さ=r→r*20 に
+    // 画像比率で平面サイズ：幅=1→10、高さ=r→r*10
     const img  = document.getElementById('overlay');
     const pane = document.getElementById('pane');
     function fit(){
       if(!img.naturalWidth||!img.naturalHeight) return;
       const r = img.naturalHeight / img.naturalWidth;
-      pane.setAttribute('width', 1 * SCALE);   // ★ 20倍に
-      pane.setAttribute('height', r * SCALE);  // ★ 20倍に
-      console.log('[overlay] size set', {w:1*SCALE, h:r*SCALE});
+      pane.setAttribute('width', 1 * PLANE_SCALE);
+      pane.setAttribute('height', r * PLANE_SCALE);
+      console.log('[overlay] size set', {w:1*PLANE_SCALE, h:r*PLANE_SCALE});
     }
     if (img.complete && img.naturalWidth) fit(); else img.addEventListener('load', fit);
 
-    // 指輪の最終スケール／浮かせ（明示再設定：上の属性値と一致させています）
+    // 指輪は前回と同値を明示再設定
     const ring = document.getElementById('ring');
-    ring.setAttribute('scale', `${BASE_RING*SCALE} ${BASE_RING*SCALE} ${BASE_RING*SCALE}`);
-    ring.setAttribute('position', `0 ${BASE_LIFT*SCALE*1} 0`);
+    ring.setAttribute('scale',   `${RING_SCALE} ${RING_SCALE} ${RING_SCALE}`);
+    ring.setAttribute('position',`0 ${RING_LIFT} 0`);
 
     // ログ（任意）
     ring?.addEventListener('model-loaded', () => console.log('ring loaded'));
