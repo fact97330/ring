@@ -3,203 +3,59 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Ikemoto Surprise Day1</title>
-  <!-- A-Frame & MindAR -->
+  <title>AR Minimal</title>
+  <!-- A-Frame & MindAR（安定版） -->
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
   <style>
-    html,body{margin:0;padding:0;background:#000;overflow:hidden;}
-    .toast{
-      position:fixed;left:50%;bottom:16px;transform:translateX(-50%);
-      background:rgba(0,0,0,.75);color:#fff;padding:8px 12px;border-radius:10px;font-size:13px;z-index:5;display:none
-    }
-    .btn{
-      position:fixed;right:12px;z-index:6;background:#fff;color:#111;border:none;border-radius:12px;
-      padding:10px 14px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.35)
-    }
-    #startCam{bottom:12px;}
-    #scaleUI{bottom:64px;display:flex;gap:8px}
-    #scaleUI button{background:#fff;color:#111;border:none;border-radius:12px;padding:8px 12px;font-weight:700}
+    html,body{margin:0;padding:0;background:#000;overflow:hidden}
+    #start{position:fixed;right:12px;bottom:12px;z-index:3;background:#fff;color:#111;
+      border:0;border-radius:12px;padding:10px 14px;font-weight:700}
   </style>
 </head>
 <body>
-  <div id="toast" class="toast"></div>
-  <button id="startCam" class="btn">カメラ開始</button>
-  <!-- スケール微調整（＋/−） -->
-  <div id="scaleUI" class="btn" style="padding:0;background:transparent;box-shadow:none">
-    <button id="minus">−</button><button id="plus">＋</button>
-  </div>
+  <!-- iOSの黒画面回避（手動起動） -->
+  <button id="start">カメラ開始</button>
 
+  <!-- 最小：MindARの画像ターゲットだけ。autoStartは切って手動で開始 -->
   <a-scene
-    mindar-image="imageTargetSrc: targets.mind"
+    mindar-image="imageTargetSrc: targets.mind?v=1; autoStart: false"
     vr-mode-ui="enabled:false"
-    device-orientation-permission-ui="enabled:false"
-    renderer="colorManagement: true; physicallyCorrectLights: true; antialias: true; shadowMap.enabled: true">
+    device-orientation-permission-ui="enabled:false">
 
     <a-assets>
       <img id="overlay" src="real-itinerary.png">
     </a-assets>
 
-    <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
+    <a-camera look-controls="enabled:false"></a-camera>
 
-    <!-- ターゲット0上に2D & 3Dを重ねる -->
-    <a-entity id="anchor" mindar-image-target="targetIndex: 0">
-      <!-- 受け面（紙）＝影を受ける -->
-      <a-plane id="pane" src="#overlay"
-               position="0 0 0" rotation="0 0 0"
-               material="transparent: true; roughness: 1; metalness: 0"
-               shadow="receive: true">
-      </a-plane>
-      <!-- 3DモデルはJSで動的に追加（GLB優先→OBJフォールバック） -->
+    <!-- ターゲット0の上に画像をそのまま乗せるだけ -->
+    <a-entity mindar-image-target="targetIndex: 0">
+      <a-plane id="pane" src="#overlay" position="0 0 0" rotation="0 0 0"></a-plane>
     </a-entity>
-
-    <!-- ライト：ambient + 影付きdirectional（少し斜め上） -->
-    <a-entity light="type: ambient; intensity: 0.5; color: #ffffff"></a-entity>
-    <a-entity id="dirLight"
-              light="type: directional; intensity: 1.0; castShadow: true; color: #ffffff"
-              position="0.8 1.2 0.6"></a-entity>
   </a-scene>
 
   <script>
-    // === 受け面（pane）を画像比率にフィット（幅=1, 高さ=比率） ===
-    const img  = document.getElementById('overlay');
-    const pane = document.getElementById('pane');
+    // 画像の比率で平面サイズを幅=1, 高さ=比率に合わせる（必須最小）
+    const img=document.getElementById('overlay'), pane=document.getElementById('pane');
     function fit(){
       if(!img.naturalWidth||!img.naturalHeight) return;
-      const r = img.naturalHeight / img.naturalWidth;
-      pane.setAttribute('width', 1);
-      pane.setAttribute('height', r);
-      window.__paneHalfHeight = r/2; // 3Dをちょい浮かせる用
+      const r=img.naturalHeight/img.naturalWidth;
+      pane.setAttribute('width',1);
+      pane.setAttribute('height',r);
     }
     if (img.complete && img.naturalWidth) fit(); else img.addEventListener('load', fit);
 
-    // === 影の品質を少し良く（PCF Soft） ===
-    (function(){
-      const sceneEl = document.querySelector('a-scene');
-      sceneEl.addEventListener('loaded', ()=>{
-        try{
-          sceneEl.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-          const d = 2.0;
-          const light = document.getElementById('dirLight').getObject3D('light');
-          if (light && light.shadow && light.shadow.camera) {
-            Object.assign(light.shadow.camera, { left:-d, right:d, top:d, bottom:-d, near:0.1, far:6 });
-          }
-        }catch(e){}
-      });
-    })();
-
-    // === トースト ===
-    function toast(msg){
-      const t = document.getElementById('toast');
-      t.textContent = msg; t.style.display='block';
-      setTimeout(()=>t.style.display='none', 4200);
+    // 手動でカメラ開始（iOSの自動起動ブロック対策）
+    const btn=document.getElementById('start');
+    const scene=document.querySelector('a-scene');
+    async function start(){
+      try{ await scene.systems['mindar-image-system'].start(); btn.style.display='none'; }
+      catch(e){ alert('カメラ起動に失敗: '+(e?.message||e)); console.error(e); }
     }
-
-    // === 3Dモデル読込（GLB優先→OBJ(+MTL)） & スケール調整 ===
-    let RING_SCALE = 0.16; // ← 指輪の倍率（大きくしたいときはここを上げる）
-    let ringEl = null;
-
-    (async function insertModel(){
-      const has = async (p)=>{ try{ const r=await fetch(p,{method:'HEAD'}); return r.ok; }catch(e){ return false; } };
-      const glb = 'ring.glb';
-      const obj = 'ring.obj';
-      const mtl = 'ring.mtl';
-      const anchor = document.getElementById('anchor');
-
-      const common = (el)=>{
-        el.setAttribute('position', `0 ${ (window.__paneHalfHeight||0) * 0 + 0.02 } 0`);
-        el.setAttribute('rotation', '0 45 0');
-        el.setAttribute('scale', `${RING_SCALE} ${RING_SCALE} ${RING_SCALE}`);
-        el.setAttribute('shadow', 'cast: true; receive: false');
-        anchor.appendChild(el);
-        ringEl = el;
-      };
-
-      if (await has(glb)) {
-        const e = document.createElement('a-gltf-model');
-        e.setAttribute('src', glb);
-        common(e);
-        toast('3D: GLB を読み込みました');
-        return;
-      }
-
-      if (await has(obj)) {
-        const e = document.createElement('a-entity');
-        if (await has(mtl)) {
-          e.setAttribute('obj-model', `obj: ${obj}; mtl: ${mtl}`);
-        } else {
-          e.setAttribute('obj-model', `obj: ${obj}`);
-          // MTLが無いときの金色上書き
-          e.setAttribute('material', 'shader: standard; color: #D4AF37; metalness: 1.0; roughness: 0.25');
-        }
-        common(e);
-        toast(await has(mtl) ? '3D: OBJ+MTL を読み込みました' : '3D: OBJ（金色で上書き）を読み込みました');
-        return;
-      }
-
-      toast('3Dモデルが見つかりません（ring.glb か ring.obj をリポジトリ直下へ）');
-    })();
-
-    // === スケールUI（＋/−） ===
-    document.getElementById('plus').addEventListener('click', ()=>{
-      RING_SCALE = +(RING_SCALE * 1.15).toFixed(4);
-      if (ringEl) ringEl.setAttribute('scale', `${RING_SCALE} ${RING_SCALE} ${RING_SCALE}`);
-    });
-    document.getElementById('minus').addEventListener('click', ()=>{
-      RING_SCALE = +(RING_SCALE / 1.15).toFixed(4);
-      if (ringEl) ringEl.setAttribute('scale', `${RING_SCALE} ${RING_SCALE} ${RING_SCALE}`);
-    });
-
-    // === 黒画面対策：手動起動＋回転/復帰時に再スタート ===
-    (function(){
-      const btn  = document.getElementById('startCam');
-      const scene= document.querySelector('a-scene');
-      let starting=false, started=false;
-
-      async function startCam(force=false){
-        if (starting) return;
-        if (started && !force) return;
-        starting = true;
-        try{
-          try { await scene.systems['mindar-image-system'].stop(); } catch(_){}
-          await scene.systems['mindar-image-system'].start();
-          started = true;
-          btn.style.display='none';
-        }catch(e){
-          console.error(e);
-          alert('カメラ起動に失敗: ' + (e && e.message ? e.message : e));
-        }finally{ starting=false; }
-      }
-
-      btn.addEventListener('click', ()=>startCam(true));
-      const once = ()=>startCam(true);
-      document.addEventListener('pointerdown', once, {once:true});
-      document.addEventListener('touchend',   once, {once:true});
-      document.addEventListener('click',      once, {once:true});
-
-      window.addEventListener('orientationchange', ()=> setTimeout(()=>startCam(true), 350));
-      document.addEventListener('visibilitychange', ()=> {
-        if (document.visibilityState === 'visible') setTimeout(()=>startCam(true), 100);
-      });
-      window.addEventListener('pageshow', (e)=>{ if (e.persisted) setTimeout(()=>startCam(true), 100); });
-
-      // WebGLコンテキストロスト対策
-      setTimeout(()=>{
-        const canvas = scene && scene.renderer && scene.renderer.domElement;
-        if (canvas) {
-          canvas.addEventListener('webglcontextlost', (ev)=>{
-            ev.preventDefault();
-            startCam(true);
-            setTimeout(()=>{ if (!started) location.reload(); }, 800);
-          }, {passive:false});
-        }
-      }, 1500);
-    })();
-
-    // === 検出ログ（任意） ===
-    const anchorEl = document.querySelector('[mindar-image-target]');
-    anchorEl.addEventListener('targetFound', ()=>console.log('found 0'));
-    anchorEl.addEventListener('targetLost',  ()=>console.log('lost 0'));
+    btn.addEventListener('click', start);
+    // どこか一度タップでも開始（保険）
+    document.addEventListener('pointerdown', ()=>start(), {once:true});
   </script>
 </body>
 </html>
