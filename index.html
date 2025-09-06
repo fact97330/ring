@@ -11,14 +11,25 @@
     html,body{margin:0;padding:0;background:#000;overflow:hidden;}
     .toast{
       position:fixed;left:50%;bottom:16px;transform:translateX(-50%);
-      background:rgba(0,0,0,.75);color:#fff;padding:8px 12px;border-radius:10px;font-size:13px;z-index:3;display:none
+      background:rgba(0,0,0,.75);color:#fff;padding:8px 12px;border-radius:10px;font-size:13px;z-index:5;display:none
     }
+    .btn{
+      position:fixed;right:12px;z-index:6;background:#fff;color:#111;border:none;border-radius:12px;
+      padding:10px 14px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.35)
+    }
+    #startCam{bottom:12px;}
+    #scaleUI{bottom:64px;display:flex;gap:8px}
+    #scaleUI button{background:#fff;color:#111;border:none;border-radius:12px;padding:8px 12px;font-weight:700}
   </style>
 </head>
 <body>
   <div id="toast" class="toast"></div>
+  <button id="startCam" class="btn">カメラ開始</button>
+  <!-- スケール微調整（＋/−） -->
+  <div id="scaleUI" class="btn" style="padding:0;background:transparent;box-shadow:none">
+    <button id="minus">−</button><button id="plus">＋</button>
+  </div>
 
-  <!-- ルート直下の targets.mind。キャッシュ回避したければ ?v=1 等を付けてOK -->
   <a-scene
     mindar-image="imageTargetSrc: targets.mind"
     vr-mode-ui="enabled:false"
@@ -26,7 +37,6 @@
     renderer="colorManagement: true; physicallyCorrectLights: true; antialias: true; shadowMap.enabled: true">
 
     <a-assets>
-      <!-- 2Dオーバーレイ（直下） -->
       <img id="overlay" src="real-itinerary.png">
     </a-assets>
 
@@ -51,7 +61,7 @@
   </a-scene>
 
   <script>
-    // 受け面（pane）を画像の縦横比にフィット（幅=1, 高さ=比率）
+    // === 受け面（pane）を画像比率にフィット（幅=1, 高さ=比率） ===
     const img  = document.getElementById('overlay');
     const pane = document.getElementById('pane');
     function fit(){
@@ -63,7 +73,7 @@
     }
     if (img.complete && img.naturalWidth) fit(); else img.addEventListener('load', fit);
 
-    // 影の品質を少し良く（PCF Soft）
+    // === 影の品質を少し良く（PCF Soft） ===
     (function(){
       const sceneEl = document.querySelector('a-scene');
       sceneEl.addEventListener('loaded', ()=>{
@@ -78,14 +88,17 @@
       });
     })();
 
-    // 画面下トースト
+    // === トースト ===
     function toast(msg){
       const t = document.getElementById('toast');
       t.textContent = msg; t.style.display='block';
       setTimeout(()=>t.style.display='none', 4200);
     }
 
-    // GLBがあればGLB、無ければOBJ(+MTL)を読み込む。どちらも無ければトースト。
+    // === 3Dモデル読込（GLB優先→OBJ(+MTL)） & スケール調整 ===
+    let RING_SCALE = 0.16; // ← 指輪の倍率（大きくしたいときはここを上げる）
+    let ringEl = null;
+
     (async function insertModel(){
       const has = async (p)=>{ try{ const r=await fetch(p,{method:'HEAD'}); return r.ok; }catch(e){ return false; } };
       const glb = 'ring.glb';
@@ -94,18 +107,17 @@
       const anchor = document.getElementById('anchor');
 
       const common = (el)=>{
-        // 紙とZファイトしないように少し浮かせる・姿勢/サイズは適宜調整
         el.setAttribute('position', `0 ${ (window.__paneHalfHeight||0) * 0 + 0.02 } 0`);
         el.setAttribute('rotation', '0 45 0');
-        el.setAttribute('scale', '0.08 0.08 0.08');
+        el.setAttribute('scale', `${RING_SCALE} ${RING_SCALE} ${RING_SCALE}`);
         el.setAttribute('shadow', 'cast: true; receive: false');
         anchor.appendChild(el);
+        ringEl = el;
       };
 
       if (await has(glb)) {
         const e = document.createElement('a-gltf-model');
         e.setAttribute('src', glb);
-        // GLBはモデル側のPBRを尊重（イエローゴールドはモデルのマテリアル側推奨）
         common(e);
         toast('3D: GLB を読み込みました');
         return;
@@ -117,18 +129,74 @@
           e.setAttribute('obj-model', `obj: ${obj}; mtl: ${mtl}`);
         } else {
           e.setAttribute('obj-model', `obj: ${obj}`);
+          // MTLが無いときの金色上書き
+          e.setAttribute('material', 'shader: standard; color: #D4AF37; metalness: 1.0; roughness: 0.25');
         }
-        // OBJは見た目を上書きしやすい：イエローゴールド風（高メタル・低ラフ）
-        e.setAttribute('material', 'shader: standard; color: #D4AF37; metalness: 1.0; roughness: 0.25');
         common(e);
-        toast('3D: OBJ を読み込みました');
+        toast(await has(mtl) ? '3D: OBJ+MTL を読み込みました' : '3D: OBJ（金色で上書き）を読み込みました');
         return;
       }
 
-      toast('3Dモデルが見つかりません（ring.glb か ring.obj をリポジトリ直下に置いてください）');
+      toast('3Dモデルが見つかりません（ring.glb か ring.obj をリポジトリ直下へ）');
     })();
 
-    // 検出ログ
+    // === スケールUI（＋/−） ===
+    document.getElementById('plus').addEventListener('click', ()=>{
+      RING_SCALE = +(RING_SCALE * 1.15).toFixed(4);
+      if (ringEl) ringEl.setAttribute('scale', `${RING_SCALE} ${RING_SCALE} ${RING_SCALE}`);
+    });
+    document.getElementById('minus').addEventListener('click', ()=>{
+      RING_SCALE = +(RING_SCALE / 1.15).toFixed(4);
+      if (ringEl) ringEl.setAttribute('scale', `${RING_SCALE} ${RING_SCALE} ${RING_SCALE}`);
+    });
+
+    // === 黒画面対策：手動起動＋回転/復帰時に再スタート ===
+    (function(){
+      const btn  = document.getElementById('startCam');
+      const scene= document.querySelector('a-scene');
+      let starting=false, started=false;
+
+      async function startCam(force=false){
+        if (starting) return;
+        if (started && !force) return;
+        starting = true;
+        try{
+          try { await scene.systems['mindar-image-system'].stop(); } catch(_){}
+          await scene.systems['mindar-image-system'].start();
+          started = true;
+          btn.style.display='none';
+        }catch(e){
+          console.error(e);
+          alert('カメラ起動に失敗: ' + (e && e.message ? e.message : e));
+        }finally{ starting=false; }
+      }
+
+      btn.addEventListener('click', ()=>startCam(true));
+      const once = ()=>startCam(true);
+      document.addEventListener('pointerdown', once, {once:true});
+      document.addEventListener('touchend',   once, {once:true});
+      document.addEventListener('click',      once, {once:true});
+
+      window.addEventListener('orientationchange', ()=> setTimeout(()=>startCam(true), 350));
+      document.addEventListener('visibilitychange', ()=> {
+        if (document.visibilityState === 'visible') setTimeout(()=>startCam(true), 100);
+      });
+      window.addEventListener('pageshow', (e)=>{ if (e.persisted) setTimeout(()=>startCam(true), 100); });
+
+      // WebGLコンテキストロスト対策
+      setTimeout(()=>{
+        const canvas = scene && scene.renderer && scene.renderer.domElement;
+        if (canvas) {
+          canvas.addEventListener('webglcontextlost', (ev)=>{
+            ev.preventDefault();
+            startCam(true);
+            setTimeout(()=>{ if (!started) location.reload(); }, 800);
+          }, {passive:false});
+        }
+      }, 1500);
+    })();
+
+    // === 検出ログ（任意） ===
     const anchorEl = document.querySelector('[mindar-image-target]');
     anchorEl.addEventListener('targetFound', ()=>console.log('found 0'));
     anchorEl.addEventListener('targetLost',  ()=>console.log('lost 0'));
