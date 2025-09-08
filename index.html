@@ -6,9 +6,7 @@
   <title>Ikemoto Surprise Ring-3D</title>
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-  <style>
-    html,body{margin:0;padding:0;background:#000;overflow:hidden}
-  </style>
+  <style>html,body{margin:0;padding:0;background:#000;overflow:hidden}</style>
 </head>
 <body>
   <a-scene
@@ -23,17 +21,16 @@
 
     <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
 
-    <!-- ライト（★PBRに必須）：環境光＋影付き方向光 -->
-    <a-entity light="type: ambient; intensity: 0.6; color: #ffffff"></a-entity>
+    <!-- ★ライト（PBR必須） -->
+    <a-entity light="type: ambient; intensity: 0.7; color: #ffffff"></a-entity>
     <a-entity id="dirLight"
-              light="type: directional; intensity: 1.2; castShadow: false; color: #ffffff"
+              light="type: directional; intensity: 1.3; color: #ffffff"
               position="0.8 1.2 0.6"></a-entity>
 
-    <!-- 紙＝PLANE_SCALE倍、指輪＝scale 4.4 / lift 0.40 -->
     <a-entity mindar-image-target="targetIndex: 0">
       <a-plane id="pane" src="#overlay" position="0 0 0" rotation="0 0 0"></a-plane>
 
-      <!-- 指輪 -->
+      <!-- 指輪（GLB） -->
       <a-gltf-model id="ring"
         src="ring.glb"
         position="0 0.40 0"
@@ -44,39 +41,66 @@
   </a-scene>
 
   <script>
-    // ===== 紙サイズ（あなたの今の設定：1倍） =====
+    // --- 紙サイズ（あなたの現状どおり = 1倍） ---
     const PLANE_SCALE = 1;
-    const img  = document.getElementById('overlay');
-    const pane = document.getElementById('pane');
+    const img=document.getElementById('overlay'), pane=document.getElementById('pane');
     function fit(){
       if(!img.naturalWidth||!img.naturalHeight) return;
-      const r = img.naturalHeight / img.naturalWidth;
-      pane.setAttribute('width', 1 * PLANE_SCALE);
-      pane.setAttribute('height', r * PLANE_SCALE);
-      console.log('[overlay] size set', {w:1*PLANE_SCALE, h:r*PLANE_SCALE});
+      const r=img.naturalHeight/img.naturalWidth;
+      pane.setAttribute('width', 1*PLANE_SCALE);
+      pane.setAttribute('height', r*PLANE_SCALE);
     }
     if (img.complete && img.naturalWidth) fit(); else img.addEventListener('load', fit);
 
-    // ===== 金色が“入っていない”GLBでも見栄えが出るようフォールバック上書き =====
-    const ring = document.getElementById('ring');
-    ring.addEventListener('model-loaded', () => {
-      const obj3 = ring.getObject3D('mesh');
-      if (!obj3) return;
-      obj3.traverse(n=>{
-        if (n.isMesh && n.material && 'metalness' in n.material) {
-          // ★GLBにPBRが入っていればこの上書きは軽微／
-          // 入っていない場合は金色に整える（イエローゴールド）
-          if ('color' in n.material) n.material.color.set('#D4AF37'); // 金色
-          n.material.metalness = 1.0;
-          n.material.roughness = 0.28; // 0.2〜0.35あたりで好み調整
-          n.material.needsUpdate = true;
-        }
+    // --- 任意：env.jpg があれば環境反射を有効化（ルート直下に置く） ---
+    let hasEnv=false;
+    const sceneEl = document.querySelector('a-scene');
+    sceneEl.addEventListener('loaded', ()=>{
+      fetch('env.jpg',{method:'HEAD'}).then(r=>{
+        if(!r.ok) return;
+        const THREE = AFRAME.THREE;
+        new THREE.TextureLoader().load('env.jpg', tex=>{
+          if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+          tex.mapping = THREE.EquirectangularReflectionMapping;
+          sceneEl.object3D.environment = tex;
+          hasEnv = true;
+        });
       });
-      console.log('ring loaded & material tuned');
     });
 
-    // 検出ログ（任意）
-    const anchor = document.querySelector('[mindar-image-target]');
+    // --- GLB 読み込み後に「金色」へ調整（非PBRは MeshStandardMaterial に変換） ---
+    const ring = document.getElementById('ring');
+    ring.addEventListener('model-loaded', (e)=>{
+      const THREE = AFRAME.THREE;
+      const root = e.detail.model;                // glTFルート
+      const gold  = new THREE.Color('#D4AF37');   // イエローゴールド
+      root.traverse(node=>{
+        if (!node.isMesh || !node.material) return;
+        const mats = Array.isArray(node.material) ? node.material : [node.material];
+        for (let i=0;i<mats.length;i++){
+          let m = mats[i];
+          const isPBR = (typeof m.metalness === 'number'); // MeshStandard/Physical 等
+          if (!isPBR){
+            // 非PBR（Basic/Lambert/Unlit等）は MeshStandardMaterial に差し替え
+            const params = { color: gold, metalness: hasEnv ? 1.0 : 0.2, roughness: hasEnv ? 0.25 : 0.35 };
+            if (m.map) params.map = m.map;
+            m = mats[i] = new THREE.MeshStandardMaterial(params);
+          }else{
+            // 既存PBRを上書き（環境が無い時は金属弱め）
+            if (m.color) m.color.copy(gold);
+            m.metalness = hasEnv ? 1.0 : 0.2;
+            m.roughness = hasEnv ? 0.25 : 0.35;
+            if ('envMapIntensity' in m) m.envMapIntensity = hasEnv ? 1.1 : 0.0;
+          }
+          m.needsUpdate = true;
+        }
+        if (Array.isArray(node.material)) node.material = mats; // 差し替え反映
+      });
+      console.log('ring loaded & gold material applied', {hasEnv});
+    });
+
+    // ログ（任意）
+    const anchor=document.querySelector('[mindar-image-target]');
     anchor.addEventListener('targetFound', ()=>console.log('found 0'));
     anchor.addEventListener('targetLost',  ()=>console.log('lost 0'));
   </script>
