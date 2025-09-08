@@ -6,12 +6,16 @@
   <title>Ikemoto Surprise Ring-3D</title>
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  <style>
+    html,body{margin:0;padding:0;background:#000;overflow:hidden}
+  </style>
 </head>
 <body>
   <a-scene
     mindar-image="imageTargetSrc: targets.mind?v=50;"
     vr-mode-ui="enabled:false"
-    device-orientation-permission-ui="enabled:false">
+    device-orientation-permission-ui="enabled:false"
+    renderer="colorManagement: true; physicallyCorrectLights: true; antialias: true">
 
     <a-assets>
       <img id="overlay" src="real-itinerary.png?v=1">
@@ -19,11 +23,17 @@
 
     <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
 
-    <!-- 紙＝10倍（前回20→半分）、指輪＝前回と同じ（scale 4.4 / lift 0.40） -->
+    <!-- ライト（★PBRに必須）：環境光＋影付き方向光 -->
+    <a-entity light="type: ambient; intensity: 0.6; color: #ffffff"></a-entity>
+    <a-entity id="dirLight"
+              light="type: directional; intensity: 1.2; castShadow: false; color: #ffffff"
+              position="0.8 1.2 0.6"></a-entity>
+
+    <!-- 紙＝PLANE_SCALE倍、指輪＝scale 4.4 / lift 0.40 -->
     <a-entity mindar-image-target="targetIndex: 0">
       <a-plane id="pane" src="#overlay" position="0 0 0" rotation="0 0 0"></a-plane>
 
-      <!-- 指輪：前回と同サイズ -->
+      <!-- 指輪 -->
       <a-gltf-model id="ring"
         src="ring.glb"
         position="0 0.40 0"
@@ -34,12 +44,8 @@
   </a-scene>
 
   <script>
-    // ====== 紙は前回の半分（10倍） ======
-    const PLANE_SCALE = 1;     // 紙の倍率（前回20 → 10）
-    const RING_SCALE   = 4.4;   // 指輪のスケール（前回と同じ）
-    const RING_LIFT    = 0.40;  // 指輪の浮かせ量（前回と同じ）
-
-    // 画像比率で平面サイズ：幅=1→10、高さ=r→r*10
+    // ===== 紙サイズ（あなたの今の設定：1倍） =====
+    const PLANE_SCALE = 1;
     const img  = document.getElementById('overlay');
     const pane = document.getElementById('pane');
     function fit(){
@@ -51,13 +57,25 @@
     }
     if (img.complete && img.naturalWidth) fit(); else img.addEventListener('load', fit);
 
-    // 指輪は前回と同値を明示再設定
+    // ===== 金色が“入っていない”GLBでも見栄えが出るようフォールバック上書き =====
     const ring = document.getElementById('ring');
-    ring.setAttribute('scale',   `${RING_SCALE} ${RING_SCALE} ${RING_SCALE}`);
-    ring.setAttribute('position',`0 ${RING_LIFT} 0`);
+    ring.addEventListener('model-loaded', () => {
+      const obj3 = ring.getObject3D('mesh');
+      if (!obj3) return;
+      obj3.traverse(n=>{
+        if (n.isMesh && n.material && 'metalness' in n.material) {
+          // ★GLBにPBRが入っていればこの上書きは軽微／
+          // 入っていない場合は金色に整える（イエローゴールド）
+          if ('color' in n.material) n.material.color.set('#D4AF37'); // 金色
+          n.material.metalness = 1.0;
+          n.material.roughness = 0.28; // 0.2〜0.35あたりで好み調整
+          n.material.needsUpdate = true;
+        }
+      });
+      console.log('ring loaded & material tuned');
+    });
 
-    // ログ（任意）
-    ring?.addEventListener('model-loaded', () => console.log('ring loaded'));
+    // 検出ログ（任意）
     const anchor = document.querySelector('[mindar-image-target]');
     anchor.addEventListener('targetFound', ()=>console.log('found 0'));
     anchor.addEventListener('targetLost',  ()=>console.log('lost 0'));
